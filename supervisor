@@ -1,0 +1,97 @@
+:-dynamic capienza/1.
+:-dynamic zaino/1.
+:-dynamic agente/2.
+:-dynamic oggetto/3.
+:-dynamic stato/1.
+
+capienza(35).
+zaino(0).
+stato(0). 
+
+
+logE(Peso, Ag)						:>		retract(stato(_)), assert(stato(1)),
+											clause(zaino(X),true), 
+											clause(capienza(M),true),
+											check_capienza(X,M,Peso,Ag).
+
+											
+check_capienza(X,M,P,Ag)			:-		X < M,   
+											C is (P + X), retract(zaino(X)), assert(zaino(C)), 
+											assert(agente(Ag, P)),
+											messageA(Ag, send_message(accept, supervisor)),
+											nl, write('Agente '), write(Ag), write(' ammesso'),nl.
+
+check_capienza(X,M,P,Ag)			:-		X >= M, 
+											messageA(Ag, send_message(reject, supervisor)),	
+											write('Agente '), write(Ag), write(' respinto'),nl.
+	
+											
+goE									:>		retract(stato(_)), assert(stato(2)),
+											nl, 
+											write('******************************'),nl,
+											write('        PARTENZA          '),nl,
+											write('******************************'),nl,
+											findall(A,agente(A,_),L),
+											retract(zaino(_)), assert(zaino(0)),
+											send_start(L),write('Start inviato'),nl.
+											
+
+send_start([])						:-		aspetta_oggettiA.
+send_start([S|R])					:-		messageA(S, send_message(start, supervisor)), 
+											send_start(R).
+
+
+oggettoE(Ide,Peso,Sender)			:>		retract(stato(_)), assert(stato(3)),
+											clause(zaino(X),true), 
+											clause(capienza(X1),true),
+											check_obj(X,X1,Sender,Ide,Peso).
+
+		
+check_obj(X,X1,Ag,I,P)				:-		X + P = X1,  
+											accetta(X,Ag,I,P),											
+											findall(A, agente(A,_),L), 
+											send_stop(L).										
+												
+check_obj(X,X1,Ag,I,P)				:-		X + P < X1, 
+											accetta(X,Ag,I,P), 
+											retract(stato(_)), assert(stato(2)),
+											aspetta_oggettiA.
+										
+check_obj(X,X1,Ag,I,P)				:-		X + P > X1, 
+											nl,write('Oggetto Respinto: '), write(I), write(' Peso: '), write(P), write(' Agente: '), write(Ag), nl,
+											messageA(Ag, send_message(reject_obj(I), supervisor)), 
+											retract(stato(_)), assert(stato(2)),
+											aspetta_oggettiA.
+										
+		
+accetta(X,Ag,I,P)					:-		assert(oggetto(I,P,Ag)), 
+											retract(zaino(X)), assert(zaino(X + P)),
+											nl,write('Oggetto Accettato: '), write(I), write(' Peso: '), write(P), write(' Agente: '), write(Ag), nl,
+											messageA(Ag, send_message(accept_obj(I), supervisor)).											
+
+end									:-		stato(4).
+endI								:>		nl, 
+											write('******************************'),nl,
+											write('          FINE            '),nl,
+											write('******************************'),nl,
+											write('Riepilogo oggetti accettati [Ide, Peso, Agente]'),nl,
+											findall([X,Y,Z], oggetto(X,Y,Z), L),
+											stampa(L),
+											retract(stato(_)), assert(stato(0)).
+											
+											
+send_stop([])						:-		retract(stato(_)), assert(stato(4)).
+send_stop([S|R])					:-		messageA(S, send_message(stop, supervisor)),
+											retract(agente(S,_)),
+											send_stop(R).
+
+
+stopE(Ag)							:>		retract(agente(Ag,_)), write('Agente '), write(Ag), write(' fuori dai giochi.'), nl,
+											findall(X,agente(X,_),L),check_ag_list(L).
+											
+check_ag_list([])					:-		retract(stato(_)), assert(stato(4)).
+check_ag_list(L)					:-		aspetta_oggettiA.				
+					
+
+stampa([]).
+stampa([A|RestList]) 				:- 		write(A),nl,stampa(RestList).
