@@ -1,0 +1,141 @@
+
+:-dynamic oggetto/3.
+:-dynamic objRejected/3.
+:-dynamic objAccepted/3.
+:-dynamic nome_agente/1.
+:-dynamic stato/1.
+
+:-use_module(library(random)).
+
+nome_agente(ag3_t2).
+stato(0).
+
+oggetti_da_inviare(L)	:-		findall([X,Y,Z], oggetto(X,Y,Z), L).
+oggetti_scartati(L)		:-		findall([X,Y,Z], objRejected(X,Y,Z), L).
+oggetti_accettati(L)	:-		findall([X,Y,Z], objAccepted(X,Y,Z), L).
+
+
+
+
+
+preparazione			:-		stato(1).
+
+preparazioneI			:>		genera_obj(5),
+								oggetti_da_inviare(L), 
+								nl, 
+								write('******************************'),nl,
+								write('      PREPARAZIONE        '),nl,
+								write('******************************'),nl,
+								write('Provo a proporre i seguenti oggetti:'), nl, stampa(L),
+								oggetti_da_inviare(L),
+								somma(L,SommaPesi,_,_), 
+								write('Peso totale: '), write(SommaPesi),nl,
+								clause(nome_agente(X),true),
+								messageA(supervisor, send_message(log(SommaPesi,X), X)), 
+								attendi_autorizzazioneA,
+								retract(stato(_)),assert(stato(2)).
+
+								
+activateE				:> 		retract(stato(_)),assert(stato(1)).
+
+
+genera_obj(1) 			:- 		!, 
+								random(1,5,Peso), random(1,5,Util),
+								assert(oggetto(1,Peso,Util)).			
+genera_obj(M) 			:- 		M > 1, M1 is M-1, genera_obj(M1), 
+								random(1,10,Peso), random(1,5,Util),
+								assert(oggetto(M,Peso,Util)).
+
+
+	
+rejectE					:>		nl,write('Per me il gioco finisce prima di iniziare!'), nl, fineA,
+								retract(stato(_)),assert(stato(0)).
+acceptE					:>		nl,write('Autorizzazione arrivata!'), nl, attendi_startA.
+
+
+
+startE					:>		nl, 
+								write('******************************'),nl,
+								write('        PARTENZA - '), clause(nome_agente(X),true), write(X), nl,
+								write('******************************'),nl,
+								retract(stato(_)),assert(stato(3)).
+								
+invia_oggetti			:-		stato(3).
+invia_oggettiI			:>		retract(stato(_)),assert(stato(2)),
+								oggetti_da_inviare(L), invia_ogg(L).
+		
+
+end						:-		stato(4).
+endI					:>		nl, 
+								write('******************************'),nl,
+								write('          FINE            '),nl,
+								write('******************************'),nl,
+								oggetti_accettati(L),somma(L,P,U,C), 
+								write('Gioco finito per me.'), nl, 
+								write('Numero di oggetti: '), write(C), nl, 
+								write('Peso totale: '), write(P), nl, 
+								write('Profitto totale: '), write(U), write('.'), nl, 
+								clause(nome_agente(X),true),
+								messageA(supervisor, send_message(stop(X), X)),
+								retract(stato(_)),assert(stato(0)).
+
+invia_ogg([])			:-		retract(stato(_)),assert(stato(4)).
+													
+invia_ogg(L)			:-		oggetti_scartati(L1), trova_next(L1,Ide,Peso),  
+								clause(nome_agente(X),true),
+								nl,write('Invio oggetto: '), write(Ide), write(' Peso: '), write(Peso),nl,
+								messageA(supervisor,send_message(oggetto(Ide, Peso, X), X)), 
+								attendi_responseA.
+	
+accept_objE(Ide)		:>		clause(oggetto(Ide,B,C), true), 
+								assert(objAccepted(Ide, B, C)), 
+								nl,write('Accettato ogg: '), write(Ide), nl,
+								retract(oggetto(Ide, B, C)), 
+								retract(stato(_)),assert(stato(3)).
+
+reject_objE(Ide)		:>		clause(oggetto(Ide,B,C), true),
+								assert(objRejected(Ide, B, C)), 
+								nl,write('Rifiutato ogg: '), write(Ide), nl,
+								retract(oggetto(Ide, B, C)),
+								elimina_ogg(B),
+								retract(stato(_)),assert(stato(3)).
+							
+stopE					:>		retract(stato(_)),assert(stato(4)).
+
+
+somma([],0,0,0).
+somma([[_,B,C]|Rest],R, S, Count)	:-	somma(Rest, R1, S1, Count1), 
+										R is (R1 + B), S is (S1 + C), Count is (Count1 + 1).
+							
+stampa([]).
+stampa([A|RestList]) 	:- 		write(A),nl,stampa(RestList).										
+								
+trova_next([],Ide,Peso)	:-		oggetti_da_inviare(L),
+								trova_max_util(L,Ide,Peso,_).			
+trova_next(L1,Ide,Peso)	:-		oggetti_da_inviare(L),
+								trova_min_peso(L,Ide,Peso).	
+								
+
+
+
+elimina_ogg(B)			:- 		oggetti_da_inviare(L),
+								elimina(L,B).
+
+elimina([],_).			
+elimina([[X,Y,Z]|Rest],B)	:-	Y >= B, retract(oggetto(X,Y,Z)),
+								nl,write('Cancellato ogg: '), write(X), write(' Peso: '), write(Y), nl,
+								elimina(Rest,B).
+elimina([[X,Y,Z]|Rest],B)	:-	Y < B, 
+								elimina(Rest,B).
+
+															
+trova_max_util([],0,0,0).
+trova_max_util([[A,B,C]|[]],A,B,C).
+trova_max_util([[A1,B1,C1]|Rest],A,B,C)		:-	trova_max_util(Rest,A,B,C), C > C1.
+trova_max_util([[A1,B1,C1]|Rest],A1,B1,C1)	:-	trova_max_util(Rest,A,B,C), C =< C1.
+
+trova_min_peso([],0,0).
+trova_min_peso([[A,B,C]|[]],A,B).
+trova_min_peso([[A1,B1,C1]|Rest],A1,B1):- 	trova_min_peso(Rest,A,B), B1 < B.
+trova_min_peso([[A1,B1,C1]|Rest],A,B)	:-	trova_min_peso(Rest,A,B), B1 >= B.
+
